@@ -1,8 +1,10 @@
 import PoincareDisk from "./PoincareDisk";
+import { HyperbolicPoint } from "./types";
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement;
     const context = canvas.getContext('2d');
+    const infoElement = document.getElementById('info');
 
     // Set canvas dimensions to match its display size
     const rect = canvas.getBoundingClientRect();
@@ -13,7 +15,14 @@ document.addEventListener('DOMContentLoaded', () => {
     context.fillStyle = 'black';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
-    const poincareDisk = new PoincareDisk(canvas, context);
+    // Create update info callback
+    const updateInfo = (info: string) => {
+        if (infoElement) {
+            infoElement.innerHTML = info;
+        }
+    };
+
+    const poincareDisk = new PoincareDisk(canvas, context, updateInfo);
     const boundary = 8;
 
     const point1: HyperbolicPoint = { type: 'Hyperbolic', x: -boundary, y: 0 };
