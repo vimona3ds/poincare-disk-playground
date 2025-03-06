@@ -7,3 +7,11 @@ this about 50% llm slop. i mainly just wrapped my head around the math and got t
 
 ## the math is probably wrong
 please help me
+
+## how to use?
+```
+git clone https://github.com/vimona3ds/poincare-disk-playground.git
+cd poincare-disk-playground
+pnpm install
+pnpm start
+```
