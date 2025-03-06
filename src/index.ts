@@ -23,19 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const poincareDisk = new PoincareDisk(canvas, context, updateInfo);
-    const boundary = 8;
-
-    const point1: HyperbolicPoint = { type: 'Hyperbolic', x: -boundary, y: 0 };
-    const point2: HyperbolicPoint = { type: 'Hyperbolic', x: 0, y: 0 };
-
-    poincareDisk.points.push(point1, point2);
-    poincareDisk.points.push({
-        type: 'Hyperbolic',
-        x: -1,
-        y: -1
-    });
-    poincareDisk.lines.push({ start: point1, end: point2 });
-
     // 30 fps request animation frame
     const animate = () => {
         poincareDisk.draw();
