@@ -238,7 +238,7 @@ class PoincareDisk {
             // Line is straight through center
             return {
                 center: { type: 'Normalized', x: 0, y: 0 },
-                radius: { type: 'Normalized', value: Infinity }, // Straight line through center
+                radius: Infinity, // Straight line through center
                 startAngle: Math.atan2(u2, u1),
                 endAngle: Math.atan2(v2, v1),
                 isStraight: true
@@ -269,7 +269,7 @@ class PoincareDisk {
 
         return {
             center,
-            radius: { type: 'Normalized', value: radius },
+            radius,
             startAngle: angleStart,
             endAngle: angleEnd,
             isStraight: false
@@ -396,7 +396,7 @@ class PoincareDisk {
                 this.context.moveTo(nstart.x, nstart.y);
                 this.context.lineTo(nend.x, nend.y);
             } else {
-                this.context.arc(arc.center.x, arc.center.y, arc.radius.value, arc.startAngle, arc.endAngle);
+                this.context.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle);
             }
 
             this.context.strokeStyle = 'black';
