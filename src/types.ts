@@ -29,6 +29,7 @@ type Arc<P extends Point, S extends Scalar> = {
     radius: S;
     startAngle: number;
     endAngle: number;
+    isStraight: boolean;
 }
 
 type NormalizedArc = Arc<NormalizedPoint, NormalizedScalar>;

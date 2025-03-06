@@ -5,6 +5,8 @@ class PoincareDisk {
     public lines: HyperbolicLine[];
     public editingPoint: HyperbolicPoint | undefined;
     public hoveredPoint: HyperbolicPoint | undefined;
+    private shiftKeyPressed: boolean = false;
+    private firstSelectedPoint: HyperbolicPoint | undefined;
 
     constructor(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
         this.canvas = canvas;
@@ -13,6 +15,7 @@ class PoincareDisk {
         this.context = context;
         this.editingPoint = undefined;
         this.hoveredPoint = undefined;
+        this.firstSelectedPoint = undefined;
         this.setupCoordinateSystem();
         this.setupEventListeners();
     }
@@ -38,6 +41,40 @@ class PoincareDisk {
             this.draw();
         });
 
+        // Track shift key press/release and handle keyboard shortcuts
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Shift') {
+                this.shiftKeyPressed = true;
+            } else if (event.key === 'Backspace' || event.key === 'Delete') {
+                // If a point is being edited, remove it
+                if (this.editingPoint) {
+                    // Find and remove the point from the points array
+                    const index = this.points.indexOf(this.editingPoint);
+                    if (index !== -1) {
+                        this.points.splice(index, 1);
+                    }
+
+                    // Also remove any lines connected to this point
+                    this.lines = this.lines.filter(line =>
+                        line.start !== this.editingPoint && line.end !== this.editingPoint
+                    );
+
+                    // Clear the editing state
+                    this.editingPoint = undefined;
+
+                    // Redraw to reflect changes
+                    this.draw();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            if (event.key === 'Shift') {
+                this.shiftKeyPressed = false;
+                this.firstSelectedPoint = undefined; // Reset selection when shift is released
+            }
+        });
+
         // Handle mouse movement for hovering over points
         this.canvas.addEventListener('mousemove', (event) => {
             const screenPoint: ScreenPoint = { type: 'Screen', x: event.clientX, y: event.clientY };
@@ -45,6 +82,8 @@ class PoincareDisk {
 
             if (!normalizedPoint) {
                 this.hoveredPoint = undefined;
+                this.editingPoint = undefined; // Clear editingPoint when mouse goes outside the disk
+                this.draw(); // Redraw to reflect changes
                 return;
             }
 
@@ -55,11 +94,13 @@ class PoincareDisk {
                     this.editingPoint.x = hyperbolicPoint.x;
                     this.editingPoint.y = hyperbolicPoint.y;
                 }
+                this.draw(); // Redraw to reflect the updated position
                 return;
             }
 
             // Otherwise, check if we're hovering over any point
             this.hoveredPoint = this.findPointNear(normalizedPoint);
+            this.draw(); // Redraw to reflect hover state
         });
 
         // Handle click for selecting/deselecting points
@@ -71,6 +112,29 @@ class PoincareDisk {
                 return;
             }
 
+            // Check if a point was clicked
+            const clickedPoint = this.findPointNear(normalizedPoint);
+
+            // Handle shift+click to connect points
+            if (this.shiftKeyPressed && clickedPoint) {
+                if (!this.firstSelectedPoint) {
+                    // First point selected
+                    this.firstSelectedPoint = clickedPoint;
+                } else if (this.firstSelectedPoint !== clickedPoint) {
+                    // Second point selected - create a line
+                    this.lines.push({
+                        start: this.firstSelectedPoint,
+                        end: clickedPoint
+                    });
+
+                    // Reset selection
+                    this.firstSelectedPoint = undefined;
+                    this.draw();
+                }
+                return;
+            }
+
+            // Regular clicking behavior (not shift+click)
             // If we're already editing a point, stop editing it
             if (this.editingPoint) {
                 this.editingPoint = undefined;
@@ -78,9 +142,9 @@ class PoincareDisk {
             }
 
             // Otherwise, try to select a point to edit
-            const pointToEdit = this.findPointNear(normalizedPoint);
-            if (pointToEdit) {
-                this.editingPoint = pointToEdit;
+            if (clickedPoint) {
+                this.editingPoint = clickedPoint;
+                this.draw();
             }
         });
 
@@ -167,26 +231,83 @@ class PoincareDisk {
         const { x: u1, y: u2 } = this.getNormalizedPointFromHyperbolicPoint(line.start);
         const { x: v1, y: v2 } = this.getNormalizedPointFromHyperbolicPoint(line.end);
 
-        const a = (u2 * (v1 ** 2 + v2 ** 2 + 1) - v2 * (u1 ** 2 + u2 ** 2 + 1)) / (u1 * v2 - u2 * v1);
-        const b = (v1 * (u1 ** 2 + u2 ** 2 + 1) - u1 * (v1 ** 2 + v2 ** 2 + 1)) / (u1 * v2 - u2 * v1);
+        const d = u1 * v2 - u2 * v1;
+
+        // Special case for diametric points (straight lines through center)
+        if (Math.abs(d) < 1e-10) {
+            // Line is straight through center
+            return {
+                center: { type: 'Normalized', x: 0, y: 0 },
+                radius: { type: 'Normalized', value: Infinity }, // Straight line through center
+                startAngle: Math.atan2(u2, u1),
+                endAngle: Math.atan2(v2, v1),
+                isStraight: true
+            };
+        }
+
+        const uSq = u1 ** 2 + u2 ** 2;
+        const vSq = v1 ** 2 + v2 ** 2;
+
+        const a = (u2 * (v1 ** 2 + v2 ** 2 + 1) - v2 * (u1 ** 2 + u2 ** 2 + 1)) / d;
+        const b = (v1 * (u1 ** 2 + u2 ** 2 + 1) - u1 * (v1 ** 2 + v2 ** 2 + 1)) / d;
 
         const center: NormalizedPoint = {
             type: 'Normalized',
             x: -a / 2,
             y: -b / 2
-        }
+        };
 
-        const radius: NormalizedScalar = {
-            type: 'Normalized',
-            value: Math.sqrt((a / 2) ** 2 + (b / 2) ** 2 - 1)
-        }
+        const radius = Math.sqrt((a / 2) ** 2 + (b / 2) ** 2 - 1);
+
+        // Calculate start/end angles explicitly
+        let angleStart = Math.atan2(u2 - center.y, u1 - center.x);
+        let angleEnd = Math.atan2(v2 - center.y, v1 - center.x);
+
+        // Ensure correct short arc direction
+        if (angleEnd < angleStart) angleEnd += 2 * Math.PI;
+        if (angleEnd - angleStart > Math.PI) [angleStart, angleEnd] = [angleEnd, angleStart];
 
         return {
             center,
-            radius,
-            startAngle: 0,
-            endAngle: Math.PI * 2
-        }
+            radius: { type: 'Normalized', value: radius },
+            startAngle: angleStart,
+            endAngle: angleEnd,
+            isStraight: false
+        };
+
+
+        // const { x: u1, y: u2 } = this.getNormalizedPointFromHyperbolicPoint(line.start);
+        // const { x: v1, y: v2 } = this.getNormalizedPointFromHyperbolicPoint(line.end);
+
+        // const a = (u2 * (v1 ** 2 + v2 ** 2 + 1) - v2 * (u1 ** 2 + u2 ** 2 + 1)) / (u1 * v2 - u2 * v1);
+        // const b = (v1 * (u1 ** 2 + u2 ** 2 + 1) - u1 * (v1 ** 2 + v2 ** 2 + 1)) / (u1 * v2 - u2 * v1);
+
+        // const center: NormalizedPoint = {
+        //     type: 'Normalized',
+        //     x: -a / 2,
+        //     y: -b / 2
+        // }
+
+        // const radius: NormalizedScalar = {
+        //     type: 'Normalized',
+        //     value: Math.sqrt((a / 2) ** 2 + (b / 2) ** 2 - 1)
+        // }
+
+        // let angleStart = Math.atan2(u2 - center.y, u1 - center.x);
+        // let angleEnd = Math.atan2(v2 - center.y, v1 - center.x);
+
+        // // Normalize angles to [0, 2π]
+        // angleStart = (angleStart + 2 * Math.PI) % (2 * Math.PI);
+        // angleEnd = Math.atan2(v2 - center.y, v1 - center.x);
+        // angleEnd = (angleEnd + 2 * Math.PI) % (2 * Math.PI);
+
+
+        // return {
+        //     center,
+        //     radius,
+        //     startAngle: Math.PI / 4,
+        //     endAngle: Math.PI
+        // }
     }
 
     public getNormalizedPointFromScreenPoint(point: ScreenPoint): NormalizedPoint | undefined {
@@ -266,7 +387,18 @@ class PoincareDisk {
             const arc = this.getNormalizedArcFromHyperbolicLine(line);
 
             this.context.beginPath();
-            this.context.arc(arc.center.x, arc.center.y, arc.radius.value, arc.startAngle, arc.endAngle);
+
+            if (arc.isStraight) {
+                const [nstart, nend] = [
+                    this.getNormalizedPointFromHyperbolicPoint(line.start),
+                    this.getNormalizedPointFromHyperbolicPoint(line.end),
+                ]
+                this.context.moveTo(nstart.x, nstart.y);
+                this.context.lineTo(nend.x, nend.y);
+            } else {
+                this.context.arc(arc.center.x, arc.center.y, arc.radius.value, arc.startAngle, arc.endAngle);
+            }
+
             this.context.strokeStyle = 'black';
             this.context.lineWidth = 0.01;
             this.context.stroke();
