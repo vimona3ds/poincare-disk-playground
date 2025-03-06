@@ -175,17 +175,32 @@ export class PoincareInteraction {
 
             // In translate mode, a click means apply the translation
             if (this.mode === "Translate" && this.translatingPoints.length > 0 && this.editingPoints.length > 0 && this.originalNormalizedMousePoint) {
-                // Calculate the current offset
-                const normalizedOffset = {
-                    x: normalizedPoint.x - this.originalNormalizedMousePoint.x,
-                    y: normalizedPoint.y - this.originalNormalizedMousePoint.y
+                // Get the hyperbolic center of the translating points
+                const sumX = this.translatingPoints.reduce((sum, point) => sum + point.x, 0);
+                const sumY = this.translatingPoints.reduce((sum, point) => sum + point.y, 0);
+
+                const hyperbolicCenter: HyperbolicPoint = {
+                    type: 'Hyperbolic',
+                    x: sumX / this.translatingPoints.length,
+                    y: sumY / this.translatingPoints.length
                 };
 
-                // Update the original points with the new positions
-                for (let i = 0; i < this.editingPoints.length && i < this.translatingPoints.length; i++) {
-                    // Apply the offset to the translating point and then copy to editing point
-                    this.editingPoints[i].x = this.translatingPoints[i].x + normalizedOffset.x;
-                    this.editingPoints[i].y = this.translatingPoints[i].y + normalizedOffset.y;
+                // Get the new hyperbolic center position from the current mouse position
+                const newHyperbolicCenter = this.geometry.getHyperbolicPointFromNormalizedPoint(normalizedPoint);
+
+                if (newHyperbolicCenter) {
+                    // Update each selected point by applying the same relative offset from the center
+                    for (let i = 0; i < this.editingPoints.length; i++) {
+                        const point = this.editingPoints[i];
+
+                        // Calculate the offset from the center in hyperbolic coordinates
+                        const offsetX = point.x - hyperbolicCenter.x;
+                        const offsetY = point.y - hyperbolicCenter.y;
+
+                        // Apply the offset to the new center
+                        point.x = newHyperbolicCenter.x + offsetX;
+                        point.y = newHyperbolicCenter.y + offsetY;
+                    }
                 }
 
                 // Switch back to Select mode

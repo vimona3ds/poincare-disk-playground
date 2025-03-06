@@ -7,6 +7,7 @@ export class PoincareRenderer {
     private context: CanvasRenderingContext2D;
     private geometry: PoincareDiskGeometry;
     private graph: PoincareGraph;
+    private translatingCenterPoint: HyperbolicPoint | undefined;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -54,6 +55,22 @@ export class PoincareRenderer {
         this.context.fillStyle = '#efefef';
         this.context.fill();
         this.context.closePath();
+
+        // Calculate the translating center point when entering Translate mode
+        if (mode === "Translate" && translatingPoints.length > 0 && !this.translatingCenterPoint) {
+            // Calculate the center by averaging all points
+            const sumX = translatingPoints.reduce((sum, point) => sum + point.x, 0);
+            const sumY = translatingPoints.reduce((sum, point) => sum + point.y, 0);
+
+            this.translatingCenterPoint = {
+                type: 'Hyperbolic',
+                x: sumX / translatingPoints.length,
+                y: sumY / translatingPoints.length
+            };
+        } else if (mode !== "Translate") {
+            // Reset the translating center point when leaving Translate mode
+            this.translatingCenterPoint = undefined;
+        }
 
         // Draw the temporary line from firstSelectedPoint to cursor in Add mode
         if (mode === "Add" && firstSelectedPoint && currentMousePosition) {
@@ -115,84 +132,87 @@ export class PoincareRenderer {
         });
 
         // Draw translating points in Translate mode
-        if (mode === "Translate" && translatingPoints.length > 0 && originalNormalizedMousePoint && currentMousePosition) {
+        if (mode === "Translate" && translatingPoints.length > 0 && originalNormalizedMousePoint && currentMousePosition && this.translatingCenterPoint) {
             const currentNormalizedPoint = this.geometry.getNormalizedPointFromScreenPoint(currentMousePosition, this.canvas);
 
             if (currentNormalizedPoint) {
-                // Calculate the normalized offset
-                const normalizedOffset = {
-                    x: currentNormalizedPoint.x - originalNormalizedMousePoint.x,
-                    y: currentNormalizedPoint.y - originalNormalizedMousePoint.y
-                };
+                // Convert the cursor position to a hyperbolic point to use as the new center
+                const newHyperbolicCenter = this.geometry.getHyperbolicPointFromNormalizedPoint(currentNormalizedPoint);
 
-                // Draw each translating point
-                translatingPoints.forEach((point, index) => {
-                    // Apply the normalized offset to the hyperbolic point
-                    // This is intentionally adding a normalized offset to a hyperbolic point's coordinates
-                    // as requested - it's just for visual preview
-                    const offsetPoint: HyperbolicPoint = {
-                        type: 'Hyperbolic',
-                        x: point.x + normalizedOffset.x, // Intentionally adding normalized offset to hyperbolic coordinate
-                        y: point.y + normalizedOffset.y  // Intentionally adding normalized offset to hyperbolic coordinate
-                    };
+                if (newHyperbolicCenter) {
+                    // Draw each translating point at its new position
+                    translatingPoints.forEach(point => {
+                        // Calculate the offset from the center in hyperbolic coordinates
+                        const offsetX = point.x - this.translatingCenterPoint.x;
+                        const offsetY = point.y - this.translatingCenterPoint.y;
 
-                    const normalizedPoint = this.geometry.getNormalizedPointFromHyperbolicPoint(offsetPoint);
-
-                    this.context.beginPath();
-                    this.context.arc(normalizedPoint.x, normalizedPoint.y, 0.01, 0, Math.PI * 2);
-                    this.context.fillStyle = 'green';
-                    this.context.fill();
-                    this.context.closePath();
-                });
-
-                // Draw lines connecting the translating points
-                // Find all lines that connect points in the translating set
-                for (const line of this.graph.lines) {
-                    const startIndex = editingPoints.indexOf(line.start);
-                    const endIndex = editingPoints.indexOf(line.end);
-
-                    if (startIndex !== -1 && endIndex !== -1 &&
-                        startIndex < translatingPoints.length &&
-                        endIndex < translatingPoints.length) {
-
-                        // Apply offset to the start and end points
-                        const offsetStart: HyperbolicPoint = {
+                        // Apply the offset to the new center
+                        const newHyperbolicPoint: HyperbolicPoint = {
                             type: 'Hyperbolic',
-                            x: translatingPoints[startIndex].x + normalizedOffset.x,
-                            y: translatingPoints[startIndex].y + normalizedOffset.y
+                            x: newHyperbolicCenter.x + offsetX,
+                            y: newHyperbolicCenter.y + offsetY
                         };
 
-                        const offsetEnd: HyperbolicPoint = {
-                            type: 'Hyperbolic',
-                            x: translatingPoints[endIndex].x + normalizedOffset.x,
-                            y: translatingPoints[endIndex].y + normalizedOffset.y
-                        };
+                        // Convert to normalized coordinates for drawing
+                        const newNormalizedPoint = this.geometry.getNormalizedPointFromHyperbolicPoint(newHyperbolicPoint);
 
-                        // Create a temporary line
-                        const tempLine = {
-                            start: offsetStart,
-                            end: offsetEnd
-                        };
-
-                        // Draw the line
-                        const arc = this.geometry.getNormalizedArcFromHyperbolicLine(tempLine);
-
+                        // Draw the translated point
                         this.context.beginPath();
+                        this.context.arc(newNormalizedPoint.x, newNormalizedPoint.y, 0.01, 0, Math.PI * 2);
+                        this.context.fillStyle = 'green';
+                        this.context.fill();
+                        this.context.closePath();
+                    });
 
-                        if (arc.isStraight) {
-                            const [nstart, nend] = [
-                                this.geometry.getNormalizedPointFromHyperbolicPoint(offsetStart),
-                                this.geometry.getNormalizedPointFromHyperbolicPoint(offsetEnd),
-                            ]
-                            this.context.moveTo(nstart.x, nstart.y);
-                            this.context.lineTo(nend.x, nend.y);
-                        } else {
-                            this.context.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle);
+                    // Draw lines connecting the translating points
+                    for (const line of this.graph.lines) {
+                        // Only draw lines where both endpoints are being translated
+                        const startIndex = translatingPoints.findIndex(p => p === line.start);
+                        const endIndex = translatingPoints.findIndex(p => p === line.end);
+
+                        if (startIndex !== -1 && endIndex !== -1) {
+                            // Calculate the new positions of both endpoints
+                            const startOffsetX = line.start.x - this.translatingCenterPoint.x;
+                            const startOffsetY = line.start.y - this.translatingCenterPoint.y;
+                            const endOffsetX = line.end.x - this.translatingCenterPoint.x;
+                            const endOffsetY = line.end.y - this.translatingCenterPoint.y;
+
+                            const newStartPoint: HyperbolicPoint = {
+                                type: 'Hyperbolic',
+                                x: newHyperbolicCenter.x + startOffsetX,
+                                y: newHyperbolicCenter.y + startOffsetY
+                            };
+
+                            const newEndPoint: HyperbolicPoint = {
+                                type: 'Hyperbolic',
+                                x: newHyperbolicCenter.x + endOffsetX,
+                                y: newHyperbolicCenter.y + endOffsetY
+                            };
+
+                            // Create a temporary line for drawing
+                            const tempLine = {
+                                start: newStartPoint,
+                                end: newEndPoint
+                            };
+
+                            // Draw the line
+                            const arc = this.geometry.getNormalizedArcFromHyperbolicLine(tempLine);
+
+                            this.context.beginPath();
+
+                            if (arc.isStraight) {
+                                const nstart = this.geometry.getNormalizedPointFromHyperbolicPoint(newStartPoint);
+                                const nend = this.geometry.getNormalizedPointFromHyperbolicPoint(newEndPoint);
+                                this.context.moveTo(nstart.x, nstart.y);
+                                this.context.lineTo(nend.x, nend.y);
+                            } else {
+                                this.context.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle);
+                            }
+
+                            this.context.strokeStyle = 'green';
+                            this.context.lineWidth = 0.01;
+                            this.context.stroke();
                         }
-
-                        this.context.strokeStyle = 'green';
-                        this.context.lineWidth = 0.01;
-                        this.context.stroke();
                     }
                 }
             }
