@@ -1,4 +1,6 @@
 # poincaré disk / hyperbolic geometry playground
+!(cool demo)[poincaredisk.gif]
+
 ## what is this?
 create, edit, translate geometries in hyperbolic geometry using the poincaré disk model
 
